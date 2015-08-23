@@ -12,34 +12,54 @@ VAGRANTFILE_API_VERSION = '2'
 BASE_BOX_URL          = ENV['BASE_BOX_URL']          || 'https://oss-binaries.phusionpassenger.com/vagrant/boxes/latest/'
 VAGRANT_BOX_URL       = ENV['VAGRANT_BOX_URL']       || BASE_BOX_URL + 'ubuntu-14.04-amd64-vbox.box'
 
-$script = <<SCRIPT
-set -ex
+$base = <<SCRIPT
+#!/bin/bash
 
+set -ex
+sudo apt-get install -y --no-install-recommends build-essential
+
+SCRIPT
+
+$nodejs = <<SCRIPT
+#!/bin/bash
+
+# Note the new setup script name for Node.js v0.10
+curl -sL https://deb.nodesource.com/setup_0.10 | sudo bash -
+
+sudo apt-get install -y --no-install-recommends nodejs
+
+sudo npm install -g nodemon
+
+SCRIPT
+
+$mongo = <<SCRIPT
+#!/bin/bash
 
 apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 7F0CEB10
 echo "deb http://repo.mongodb.org/apt/ubuntu "$(lsb_release -sc)"/mongodb-org/3.0 multiverse" | tee /etc/apt/sources.list.d/mongodb-org-3.0.list
 
-curl -sL https://deb.nodesource.com/setup | sudo bash -
-sudo apt-get install build-essential
-
 apt-get update -qq
-sudo apt-get install -y --no-install-recommends nodejs
 
 set -x \
 && apt-get install -y --no-install-recommends mongodb-org \
-&& sudo rm -rf /var/lib/apt/lists/* \
-&& sudo rm -rf /var/lib/mongodb \
-&& sudo mv /etc/mongod.conf /etc/mongod.conf.orig
-
-curl -sL https://install.meteor.com/ | sh
-
-sudo npm install -g nodemon
-
-service mongod status
+&& sudo rm -rf /var/lib/apt/lists/*
 
 SCRIPT
 
-$command = "cp #{File.join('/etc/', '')} #{remote_file}"
+$meteor = <<SCRIPT
+#!/bin/bash
+
+# Install Meteor
+curl -sL https://install.meteor.com/ | sh
+
+SCRIPT
+
+$post = <<SCRIPT
+
+sudo apt-get clean
+cat /dev/null > ~/.bash_history && history -c
+
+SCRIPT
 
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.box = 'phusion-open-ubuntu-14.04-amd64'
@@ -47,7 +67,17 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.ssh.forward_agent = true
   config.vm.network "private_network", type: "dhcp"
 
-  config.vm.provision :shell, :inline => $script
+  config.vm.provision :shell, :inline => $base
+  config.vm.provision :shell, :inline => $nodejs
+  config.vm.provision :shell, :inline => $mongo
+  config.vm.provision :shell, :inline => $meteor
+
+  config.vm.provision :shell, :inline => $post
+
+  config.push.define "atlas" do |push|
+    push.app = "thepfmind/meteor-base"
+  end
+
 end
 
 # plugin conflict
